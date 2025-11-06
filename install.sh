@@ -1,8 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 
-# Shadowsocks (libev & rust) + simple-obfs 一键安装脚本
-# 适用于 Debian / Ubuntu
-# 使用方法: bash install.sh
+# V2Ray 一键安装配置脚本 - 通用版本
+# 支持系统: Alpine Linux, Debian, Ubuntu, CentOS, Fedora
+# 使用方法: sh install_v2ray.sh [PORT] [USER] [PASS]
+# 或者设置环境变量: PORT=61031 USER=user01 PASS=pass01 sh install_v2ray.sh
 
 set -e
 
@@ -10,275 +11,519 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
-# 打印函数
-print_info() { echo -e "${GREEN}[信息]${NC} $1"; }
-print_warn() { echo -e "${YELLOW}[警告]${NC} $1"; }
-print_error() { echo -e "${RED}[错误]${NC} $1"; }
-print_success() { echo -e "${GREEN}[成功]${NC} $1"; }
-print_step() { echo -e "${BLUE}[步骤]${NC} $1"; }
+# 全局变量
+OS_TYPE=""
+INIT_SYSTEM=""
+PKG_MANAGER=""
 
-# 检查 root 权限
-if [ "$(id -u)" -ne 0 ]; then
-    print_error "此脚本必须以 root 身份运行"
-    exit 1
-fi
+# 打印信息函数
+print_info() {
+    printf "${GREEN}[INFO]${NC} %s\n" "$1"
+}
 
-# 配置参数
-LIB_PORT=${LIB_PORT:-65041}
-RUST_PORT=${RUST_PORT:-65042}
-PASSWORD="opj33QlG2TRNOB18xt288A=="
+print_error() {
+    printf "${RED}[ERROR]${NC} %s\n" "$1"
+}
 
-print_info "=== Shadowsocks 安装脚本 ==="
-echo "配置信息："
-echo "  - shadowsocks-libev 端口: $LIB_PORT"
-echo "  - shadowsocks-rust 端口: $RUST_PORT"
-echo "  - 密码: $PASSWORD"
-echo "  - libev 加密: aes-256-gcm"
-echo "  - rust 加密: aes-128-gcm"
-echo "  - 混淆插件: obfs-server (http)"
-echo
+print_warning() {
+    printf "${YELLOW}[WARNING]${NC} %s\n" "$1"
+}
 
-# 步骤 1: 更新系统
-print_step "步骤 1/7: 更新系统并安装基础工具"
-apt update && apt upgrade -y
-apt install -y sudo curl wget openssl unzip xz-utils
-print_success "系统更新完成"
-echo
-
-# 步骤 2: 安装 shadowsocks-libev
-print_step "步骤 2/7: 安装 shadowsocks-libev"
-apt install -y shadowsocks-libev
-
-if command -v ss-server >/dev/null 2>&1; then
-    print_success "shadowsocks-libev 安装完成"
-    ss-server -h | head -n 1
-else
-    print_error "shadowsocks-libev 安装失败"
-    exit 1
-fi
-echo
-
-# 步骤 3: 安装 shadowsocks-rust
-print_step "步骤 3/7: 安装 shadowsocks-rust（获取最新版本）"
-
-# 获取最新版本号
-print_info "正在获取 shadowsocks-rust 最新版本..."
-LATEST_VERSION=$(curl -s https://api.github.com/repos/shadowsocks/shadowsocks-rust/releases/latest | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
-
-if [ -z "$LATEST_VERSION" ]; then
-    print_warn "无法获取最新版本，使用默认版本 1.23.5"
-    LATEST_VERSION="1.23.5"
-else
-    print_info "最新版本: v$LATEST_VERSION"
-fi
-
-RUST_URL="https://github.com/shadowsocks/shadowsocks-rust/releases/download/v${LATEST_VERSION}/shadowsocks-v${LATEST_VERSION}.x86_64-unknown-linux-gnu.tar.xz"
-
-print_info "下载 shadowsocks-rust..."
-wget -q --show-progress "$RUST_URL" -O /tmp/shadowsocks-rust.tar.xz
-
-print_info "解压并安装..."
-cd /tmp
-tar -xf shadowsocks-rust.tar.xz
-mv ss* /usr/bin/
-chmod +x /usr/bin/ss*
-rm -f /tmp/shadowsocks-rust.tar.xz
-
-if command -v ssserver >/dev/null 2>&1; then
-    print_success "shadowsocks-rust 安装完成"
-    ssserver --version
-else
-    print_error "shadowsocks-rust 安装失败"
-    exit 1
-fi
-echo
-
-# 步骤 4: 安装 simple-obfs
-print_step "步骤 4/7: 安装 simple-obfs"
-
-OBFS_URL="https://github.com/hide3110/ss-lib-rust/raw/main/simple-obfs-debian10-amd64.tar.gz"
-
-print_info "下载 simple-obfs..."
-if wget -q --show-progress "$OBFS_URL" -O /tmp/simple-obfs.tar.gz; then
-    cd /tmp
-    tar -xzf simple-obfs.tar.gz
-    mv obfs-server obfs-local /usr/bin/
-    chmod +x /usr/bin/obfs-*
-    rm -f /tmp/simple-obfs.tar.gz
-    
-    if command -v obfs-server >/dev/null 2>&1; then
-        print_success "simple-obfs 安装完成"
-        obfs-server --help 2>&1 | head -n 1 || echo "obfs-server installed"
-    else
-        print_warn "simple-obfs 安装失败，将跳过混淆配置"
-        USE_OBFS=false
+# 检查是否为 root 用户
+check_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        print_error "此脚本必须以 root 权限运行"
+        exit 1
     fi
-else
-    print_warn "simple-obfs 下载失败，将跳过混淆配置"
-    USE_OBFS=false
-fi
-echo
+}
 
-# 步骤 5: 创建 shadowsocks-rust systemd 服务
-print_step "步骤 5/7: 创建 shadowsocks-rust 服务文件"
+# 检测操作系统类型
+detect_os() {
+    print_info "检测操作系统类型..."
+    
+    # 检测 Alpine Linux
+    if [ -f /etc/alpine-release ]; then
+        OS_TYPE="alpine"
+        INIT_SYSTEM="openrc"
+        PKG_MANAGER="apk"
+        OS_VERSION=$(cat /etc/alpine-release)
+        print_info "检测到 Alpine Linux $OS_VERSION"
+        return
+    fi
+    
+    # 检测其他 Linux 发行版
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        case "$ID" in
+            ubuntu|debian)
+                OS_TYPE="debian"
+                PKG_MANAGER="apt"
+                ;;
+            centos|rhel|fedora)
+                OS_TYPE="redhat"
+                if command -v dnf >/dev/null 2>&1; then
+                    PKG_MANAGER="dnf"
+                else
+                    PKG_MANAGER="yum"
+                fi
+                ;;
+            opensuse*|sles)
+                OS_TYPE="suse"
+                PKG_MANAGER="zypper"
+                ;;
+            arch|manjaro)
+                OS_TYPE="arch"
+                PKG_MANAGER="pacman"
+                ;;
+            *)
+                print_error "不支持的操作系统: $ID"
+                exit 1
+                ;;
+        esac
+        
+        # 检测 init 系统
+        if [ -d /run/systemd/system ]; then
+            INIT_SYSTEM="systemd"
+        elif command -v rc-service >/dev/null 2>&1; then
+            INIT_SYSTEM="openrc"
+        else
+            print_error "无法检测到支持的 init 系统"
+            exit 1
+        fi
+        
+        print_info "检测到 $NAME"
+        print_info "Init 系统: $INIT_SYSTEM"
+    else
+        print_error "无法检测操作系统类型"
+        exit 1
+    fi
+}
 
-cat > /usr/lib/systemd/system/shadowsocks-rust.service <<'EOF'
-[Unit]
-Description=Shadowsocks-rust Service
-Documentation=https://github.com/shadowsocks/shadowsocks-rust
-After=network.target
+# 获取参数
+get_parameters() {
+    # 如果通过命令行参数传入
+    if [ $# -eq 3 ]; then
+        PORT=$1
+        USER=$2
+        PASS=$3
+    # 如果通过环境变量传入
+    elif [ -n "$PORT" ] && [ -n "$USER" ] && [ -n "$PASS" ]; then
+        print_info "使用环境变量配置"
+    # 交互式输入
+    else
+        print_info "请输入配置参数（按回车使用默认值）"
+        
+        printf "端口 [默认: 61031]: "
+        read PORT
+        PORT=${PORT:-61031}
+        
+        printf "用户名 [默认: user01]: "
+        read USER
+        USER=${USER:-user01}
+        
+        printf "密码 [默认: pass01]: "
+        read PASS
+        PASS=${PASS:-pass01}
+    fi
+    
+    # 验证端口范围
+    if ! echo "$PORT" | grep -qE '^[0-9]+$' || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+        print_error "端口必须在 1-65535 之间"
+        exit 1
+    fi
+    
+    print_info "配置参数："
+    echo "  端口: $PORT"
+    echo "  用户: $USER"
+    echo "  密码: $PASS"
+}
 
-[Service]
-Type=simple
-LimitNOFILE=32768
-ExecStart=/usr/bin/ssservice server --log-without-time -c /etc/shadowsocks-rust/config.json
-Restart=on-failure
+# 获取本机 IP
+get_host_ip() {
+    print_info "获取本机 IP 地址..."
+    
+    # 尝试多种方式获取公网 IP
+    if command -v curl >/dev/null 2>&1; then
+        HOST=$(curl -s -4 https://api.ipify.org 2>/dev/null || \
+               curl -s -4 https://ifconfig.me 2>/dev/null || \
+               curl -s -4 https://icanhazip.com 2>/dev/null)
+    elif command -v wget >/dev/null 2>&1; then
+        HOST=$(wget -qO- https://api.ipify.org 2>/dev/null || \
+               wget -qO- https://ifconfig.me 2>/dev/null || \
+               wget -qO- https://icanhazip.com 2>/dev/null)
+    fi
+    
+    # 如果无法获取公网IP，使用本地IP
+    if [ -z "$HOST" ]; then
+        HOST=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127.0.0.1' | head -n 1)
+    fi
+    
+    if [ -z "$HOST" ]; then
+        print_error "无法获取本机 IP 地址"
+        exit 1
+    fi
+    
+    print_info "检测到本机 IP: $HOST"
+}
 
-[Install]
-WantedBy=multi-user.target
-EOF
+# 安装依赖工具
+install_dependencies() {
+    print_info "安装必要的依赖工具..."
+    
+    case "$PKG_MANAGER" in
+        apk)
+            apk update
+            apk add --no-cache curl wget unzip ca-certificates
+            ;;
+        apt)
+            apt-get update
+            apt-get install -y curl wget unzip ca-certificates
+            ;;
+        dnf)
+            dnf install -y curl wget unzip ca-certificates
+            ;;
+        yum)
+            yum install -y curl wget unzip ca-certificates
+            ;;
+        zypper)
+            zypper install -y curl wget unzip ca-certificates
+            ;;
+        pacman)
+            pacman -Syu --noconfirm curl wget unzip ca-certificates
+            ;;
+    esac
+    
+    print_info "依赖工具安装完成"
+}
 
-print_success "shadowsocks-rust 服务文件创建完成"
-echo
+# Alpine 系统特殊处理
+setup_alpine() {
+    print_info "配置 Alpine Linux 环境..."
+    
+    # 启用 Community 仓库
+    if ! grep -q "^[^#]*community" /etc/apk/repositories; then
+        VERSION=$(cat /etc/alpine-release | cut -d'.' -f1,2)
+        echo "https://dl-cdn.alpinelinux.org/alpine/v${VERSION}/community" >> /etc/apk/repositories
+        apk update
+        print_info "Community 仓库已启用"
+    fi
+}
 
-# 步骤 6: 创建配置文件
-print_step "步骤 6/7: 创建配置文件"
+# 安装 V2Ray - Alpine 方式
+install_v2ray_alpine() {
+    print_info "在 Alpine 上安装 V2Ray v5.41.0..."
+    
+    # 尝试从仓库安装
+    if apk search v2ray | grep -q "^v2ray-"; then
+        print_info "从 Alpine 仓库安装 V2Ray..."
+        apk add --no-cache v2ray v2ray-openrc
+        mkdir -p /usr/local/etc/v2ray /var/log/v2ray
+    else
+        # 使用 alpinelinux-install-v2ray 脚本
+        print_info "从 GitHub 安装 V2Ray v5.41.0..."
+        TEMP_SCRIPT=$(mktemp)
+        wget -O "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/alpinelinux-install-v2ray/master/install-release.sh
+        sh "$TEMP_SCRIPT" --version v5.41.0
+        rm -f "$TEMP_SCRIPT"
+    fi
+    
+    print_info "V2Ray 安装成功"
+}
 
-mkdir -p /etc/shadowsocks-libev
-mkdir -p /etc/shadowsocks-rust
+# 安装 V2Ray - Systemd 系统方式
+install_v2ray_systemd() {
+    print_info "在 $OS_TYPE 上安装 V2Ray v5.41.0..."
+    
+    # 使用 fhs-install-v2ray 脚本
+    if command -v bash >/dev/null 2>&1; then
+        bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh) --version v5.41.0
+    else
+        # 如果没有 bash，先下载再执行
+        TEMP_SCRIPT=$(mktemp)
+        curl -L -o "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh
+        sh "$TEMP_SCRIPT" --version v5.41.0
+        rm -f "$TEMP_SCRIPT"
+    fi
+    
+    print_info "V2Ray 安装成功"
+}
 
-# shadowsocks-libev 配置
-print_info "创建 shadowsocks-libev 配置..."
-if [ "$USE_OBFS" != false ]; then
-    cat > /etc/shadowsocks-libev/config.json <<EOF
+# 安装 V2Ray
+install_v2ray() {
+    if [ "$OS_TYPE" = "alpine" ]; then
+        setup_alpine
+        install_v2ray_alpine
+    else
+        install_v2ray_systemd
+    fi
+}
+
+# 配置 V2Ray
+configure_v2ray() {
+    print_info "配置 V2Ray..."
+    
+    # 确定配置文件路径
+    if [ -d /usr/local/etc/v2ray ]; then
+        CONFIG_PATH="/usr/local/etc/v2ray"
+    elif [ -d /etc/v2ray ]; then
+        CONFIG_PATH="/etc/v2ray"
+    else
+        CONFIG_PATH="/usr/local/etc/v2ray"
+        mkdir -p "$CONFIG_PATH"
+    fi
+    
+    # 生成配置文件（直接覆盖，不备份）
+    cat > "$CONFIG_PATH/config.json" <<EOF
 {
-    "server": "0.0.0.0",
-    "server_port": $LIB_PORT,
-    "password": "$PASSWORD",
-    "timeout": 300,
-    "method": "aes-256-gcm",
-    "fast_open": true,
-    "nameserver": "8.8.8.8",
-    "mode": "tcp_and_udp",
-    "plugin": "obfs-server",
-    "plugin_opts": "obfs=http"
+  "log": {
+    "loglevel": "warning"
+  },
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "ip": [
+          "geoip:private"
+        ],
+        "outboundTag": "blockd",
+        "type": "field"
+      }
+    ]
+  },
+  "inbounds": [
+    {
+      "port": $PORT,
+      "protocol": "socks",
+      "settings": {
+        "auth": "password",
+        "accounts": [
+          {
+            "user": "$USER",
+            "pass": "$PASS"
+          }
+        ],
+        "udp": true,
+        "ip": "127.0.0.1"
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    },
+    {
+      "protocol": "blackhole",
+      "tag": "blockd"
+    }
+  ]
 }
 EOF
-else
-    cat > /etc/shadowsocks-libev/config.json <<EOF
-{
-    "server": "0.0.0.0",
-    "server_port": $LIB_PORT,
-    "password": "$PASSWORD",
-    "timeout": 300,
-    "method": "aes-256-gcm",
-    "fast_open": true,
-    "nameserver": "8.8.8.8",
-    "mode": "tcp_and_udp"
+    
+    # 确保日志目录存在
+    mkdir -p /var/log/v2ray
+    touch /var/log/v2ray/access.log 2>/dev/null || true
+    touch /var/log/v2ray/error.log 2>/dev/null || true
+    
+    print_info "配置文件已生成: $CONFIG_PATH/config.json"
+}
+
+# 配置 OpenRC 服务（Alpine）
+configure_openrc_service() {
+    print_info "配置 V2Ray OpenRC 服务..."
+    
+    if [ ! -f /etc/init.d/v2ray ]; then
+        cat > /etc/init.d/v2ray <<'EOF'
+#!/sbin/openrc-run
+
+name="v2ray"
+description="V2Ray Service"
+command="/usr/local/bin/v2ray"
+command_args="run -config /usr/local/etc/v2ray/config.json"
+command_background="yes"
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="/var/log/v2ray/access.log"
+error_log="/var/log/v2ray/error.log"
+
+depend() {
+    need net
+    after net
+}
+
+start_pre() {
+    checkpath -d -m 0755 -o root:root /var/log/v2ray
 }
 EOF
-fi
-
-# shadowsocks-rust 配置
-print_info "创建 shadowsocks-rust 配置..."
-if [ "$USE_OBFS" != false ]; then
-    cat > /etc/shadowsocks-rust/config.json <<EOF
-{
-    "server": "0.0.0.0",
-    "server_port": $RUST_PORT,
-    "password": "$PASSWORD",
-    "timeout": 300,
-    "method": "aes-128-gcm",
-    "fast_open": true,
-    "nameserver": "8.8.8.8",
-    "mode": "tcp_and_udp",
-    "plugin": "obfs-server",
-    "plugin_opts": "obfs=http"
+        chmod +x /etc/init.d/v2ray
+        print_info "OpenRC 服务文件已创建"
+    fi
 }
-EOF
-else
-    cat > /etc/shadowsocks-rust/config.json <<EOF
-{
-    "server": "0.0.0.0",
-    "server_port": $RUST_PORT,
-    "password": "$PASSWORD",
-    "timeout": 300,
-    "method": "aes-128-gcm",
-    "fast_open": true,
-    "nameserver": "8.8.8.8",
-    "mode": "tcp_and_udp"
+
+# 启动服务 - OpenRC
+start_service_openrc() {
+    print_info "启动 V2Ray 服务 (OpenRC)..."
+    
+    rc-update add v2ray default
+    rc-service v2ray start
+    
+    sleep 2
+    
+    if rc-service v2ray status | grep -q "started"; then
+        print_info "V2Ray 服务启动成功"
+    else
+        print_error "V2Ray 服务启动失败"
+        print_info "查看日志: tail -f /var/log/v2ray/error.log"
+        exit 1
+    fi
 }
+
+# 启动服务 - Systemd
+start_service_systemd() {
+    print_info "启动 V2Ray 服务 (Systemd)..."
+    
+    systemctl enable v2ray --now
+    
+    sleep 2
+    
+    if systemctl is-active --quiet v2ray; then
+        print_info "V2Ray 服务启动成功"
+    else
+        print_error "V2Ray 服务启动失败"
+        print_info "查看日志: journalctl -u v2ray -n 50"
+        exit 1
+    fi
+}
+
+# 启动服务
+start_service() {
+    if [ "$INIT_SYSTEM" = "openrc" ]; then
+        configure_openrc_service
+        start_service_openrc
+    else
+        start_service_systemd
+    fi
+}
+
+# 生成连接信息
+generate_connection_info() {
+    print_info "生成连接信息..."
+    
+    # 生成 SOCKS5 URL
+    SOCKS5_URL="socks5://$USER:$PASS@$HOST:$PORT"
+    
+    # 根据 init 系统显示不同的命令
+    if [ "$INIT_SYSTEM" = "openrc" ]; then
+        CMD_START="rc-service v2ray start"
+        CMD_STOP="rc-service v2ray stop"
+        CMD_RESTART="rc-service v2ray restart"
+        CMD_STATUS="rc-service v2ray status"
+        CMD_ENABLE="rc-update add v2ray default"
+        CMD_DISABLE="rc-update del v2ray default"
+        CMD_LOG="tail -f /var/log/v2ray/error.log"
+    else
+        CMD_START="systemctl start v2ray"
+        CMD_STOP="systemctl stop v2ray"
+        CMD_RESTART="systemctl restart v2ray"
+        CMD_STATUS="systemctl status v2ray"
+        CMD_ENABLE="systemctl enable v2ray"
+        CMD_DISABLE="systemctl disable v2ray"
+        CMD_LOG="journalctl -u v2ray -f"
+    fi
+    
+    echo ""
+    echo "=========================================="
+    echo "V2Ray 安装配置完成！"
+    echo "=========================================="
+    echo ""
+    echo "系统信息："
+    echo "  操作系统: $OS_TYPE"
+    echo "  Init 系统: $INIT_SYSTEM"
+    echo ""
+    echo "服务器信息："
+    echo "  IP 地址: $HOST"
+    echo "  端口: $PORT"
+    echo "  用户名: $USER"
+    echo "  密码: $PASS"
+    echo ""
+    echo "SOCKS5 连接 URL："
+    echo "  $SOCKS5_URL"
+    echo ""
+    echo "服务管理命令："
+    echo "  启动服务: $CMD_START"
+    echo "  停止服务: $CMD_STOP"
+    echo "  重启服务: $CMD_RESTART"
+    echo "  查看状态: $CMD_STATUS"
+    echo "  查看日志: $CMD_LOG"
+    echo ""
+    echo "开机自启管理："
+    echo "  启用自启: $CMD_ENABLE"
+    echo "  禁用自启: $CMD_DISABLE"
+    echo ""
+    echo "配置文件位置："
+    if [ -f /usr/local/etc/v2ray/config.json ]; then
+        echo "  /usr/local/etc/v2ray/config.json"
+    elif [ -f /etc/v2ray/config.json ]; then
+        echo "  /etc/v2ray/config.json"
+    fi
+    echo "=========================================="
+    echo ""
+    
+    # 保存连接信息到文件
+    cat > /root/v2ray_info.txt <<EOF
+V2Ray 连接信息
+===========================================
+安装时间: $(date)
+操作系统: $OS_TYPE
+Init 系统: $INIT_SYSTEM
+
+服务器信息：
+  IP 地址: $HOST
+  端口: $PORT
+  用户名: $USER
+  密码: $PASS
+
+SOCKS5 连接 URL：
+  $SOCKS5_URL
+
+服务管理命令：
+  启动服务: $CMD_START
+  停止服务: $CMD_STOP
+  重启服务: $CMD_RESTART
+  查看状态: $CMD_STATUS
+  查看日志: $CMD_LOG
+
+开机自启管理：
+  启用自启: $CMD_ENABLE
+  禁用自启: $CMD_DISABLE
+
+配置文件位置：
+  $([ -f /usr/local/etc/v2ray/config.json ] && echo "/usr/local/etc/v2ray/config.json" || echo "/etc/v2ray/config.json")
+===========================================
 EOF
-fi
+    
+    print_info "连接信息已保存到 /root/v2ray_info.txt"
+}
 
-print_success "配置文件创建完成"
-echo
+# 主函数
+main() {
+    echo "=========================================="
+    echo "  V2Ray 一键安装配置脚本"
+    echo "  通用版本 (Alpine/Debian/Ubuntu/CentOS)"
+    echo "=========================================="
+    echo ""
+    
+    check_root
+    detect_os
+    get_parameters "$@"
+    get_host_ip
+    install_dependencies
+    install_v2ray
+    configure_v2ray
+    start_service
+    generate_connection_info
+}
 
-# 步骤 7: 启动服务
-print_step "步骤 7/7: 启动并启用服务"
-
-systemctl daemon-reload
-
-print_info "重启 shadowsocks-libev 以应用配置..."
-systemctl restart shadowsocks-libev
-systemctl enable shadowsocks-libev
-sleep 2
-
-if systemctl is-active --quiet shadowsocks-libev; then
-    print_success "shadowsocks-libev 服务已启动"
-else
-    print_error "shadowsocks-libev 服务启动失败"
-    systemctl status shadowsocks-libev --no-pager
-fi
-
-print_info "启动 shadowsocks-rust..."
-systemctl enable shadowsocks-rust --now
-sleep 2
-
-if systemctl is-active --quiet shadowsocks-rust; then
-    print_success "shadowsocks-rust 服务已启动"
-else
-    print_error "shadowsocks-rust 服务启动失败"
-    systemctl status shadowsocks-rust --no-pager
-fi
-
-echo
-
-# 安装总结
-print_success "=========================================="
-print_success "安装完成！"
-print_success "=========================================="
-echo
-print_info "服务器信息："
-SERVER_IP=$(curl -s ifconfig.me || curl -s icanhazip.com || echo "获取失败")
-echo "  服务器地址: $SERVER_IP"
-echo "  shadowsocks-libev 端口: $LIB_PORT"
-echo "  shadowsocks-rust 端口: $RUST_PORT"
-echo "  密码: $PASSWORD"
-echo "  libev 加密方法: aes-256-gcm"
-echo "  rust 加密方法: aes-128-gcm"
-if [ "$USE_OBFS" != false ]; then
-    echo "  混淆插件: obfs-server"
-    echo "  混淆类型: http"
-else
-    echo "  混淆插件: 未安装"
-fi
-echo
-print_info "配置文件位置："
-echo "  - /etc/shadowsocks-libev/config.json"
-echo "  - /etc/shadowsocks-rust/config.json"
-echo
-print_info "服务管理命令："
-echo "  - systemctl status shadowsocks-libev"
-echo "  - systemctl status shadowsocks-rust"
-echo "  - systemctl restart shadowsocks-libev"
-echo "  - systemctl restart shadowsocks-rust"
-echo
-print_info "日志查看命令："
-echo "  - journalctl -u shadowsocks-libev -f"
-echo "  - journalctl -u shadowsocks-rust -f"
-echo
-print_success "=========================================="
+# 执行主函数
+main "$@"
