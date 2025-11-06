@@ -12,6 +12,10 @@ PORT=61031 USER=yyds01 PASS=b346e6ff-cad9-4cdd-b621-8b3bc51a0ca7 bash <(curl -fs
 ```
 VER=v5.38.0 PORT=61031 USER=yyds01 PASS=b346e6ff-cad9-4cdd-b621-8b3bc51a0ca7 bash <(curl -fsSL https://raw.githubusercontent.com/hide3110/v2ray-socks/main/install.sh)
 ```
+### 缷载
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/hide3110/v2ray-socks/main/uninstall.sh)
+```
 
 ## 详细说明
 
