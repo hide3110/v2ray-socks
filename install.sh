@@ -357,7 +357,8 @@ configure_v2ray() {
             "pass": "$PASS"
           }
         ],
-        "udp": true
+        "udp": true,
+        "ip": "127.0.0.1"
       }
     }
   ],
