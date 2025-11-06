@@ -340,7 +340,7 @@ configure_v2ray() {
         "ip": [
           "geoip:private"
         ],
-        "outboundTag": "blockd",
+        "outboundTag": "blocked",
         "type": "field"
       }
     ]
@@ -357,8 +357,7 @@ configure_v2ray() {
             "pass": "$PASS"
           }
         ],
-        "udp": true,
-        "ip": "127.0.0.1"
+        "udp": true
       }
     }
   ],
@@ -369,7 +368,7 @@ configure_v2ray() {
     },
     {
       "protocol": "blackhole",
-      "tag": "blockd"
+      "tag": "blocked"
     }
   ]
 }
