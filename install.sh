@@ -2,8 +2,8 @@
 
 # V2Ray 一键安装配置脚本 - 通用版本
 # 支持系统: Alpine Linux, Debian, Ubuntu, CentOS, Fedora
-# 使用方法: sh install_v2ray.sh [PORT] [USER] [PASS]
-# 或者设置环境变量: PORT=61031 USER=user01 PASS=pass01 sh install_v2ray.sh
+# 使用方法: sh install_v2ray.sh [PORT] [USER] [PASS] [VERSION]
+# 或者设置环境变量: PORT=61031 USER=user01 PASS=pass01 VER=v5.41.0 sh install_v2ray.sh
 
 set -e
 
@@ -17,6 +17,7 @@ NC='\033[0m' # No Color
 OS_TYPE=""
 INIT_SYSTEM=""
 PKG_MANAGER=""
+V2RAY_VERSION=""
 
 # 打印信息函数
 print_info() {
@@ -104,15 +105,29 @@ detect_os() {
 # 获取参数
 get_parameters() {
     # 如果通过命令行参数传入
-    if [ $# -eq 3 ]; then
+    if [ $# -eq 4 ]; then
         PORT=$1
         USER=$2
         PASS=$3
+        V2RAY_VERSION=$4
+    elif [ $# -eq 3 ]; then
+        PORT=$1
+        USER=$2
+        PASS=$3
+    fi
+    
     # 如果通过环境变量传入
-    elif [ -n "$PORT" ] && [ -n "$USER" ] && [ -n "$PASS" ]; then
-        print_info "使用环境变量配置"
+    if [ -n "$PORT" ] && [ -n "$USER" ] && [ -n "$PASS" ]; then
+        if [ -n "$VER" ]; then
+            V2RAY_VERSION="$VER"
+            print_info "使用环境变量配置（包含版本）"
+        else
+            print_info "使用环境变量配置"
+        fi
+    fi
+    
     # 交互式输入
-    else
+    if [ -z "$PORT" ] || [ -z "$USER" ] || [ -z "$PASS" ]; then
         print_info "请输入配置参数（按回车使用默认值）"
         
         printf "端口 [默认: 61031]: "
@@ -126,6 +141,17 @@ get_parameters() {
         printf "密码 [默认: pass01]: "
         read PASS
         PASS=${PASS:-pass01}
+        
+        printf "V2Ray 版本 [默认: v5.41.0]: "
+        read V2RAY_VERSION
+    fi
+    
+    # 设置默认版本
+    V2RAY_VERSION=${V2RAY_VERSION:-v5.41.0}
+    
+    # 确保版本号以 v 开头
+    if ! echo "$V2RAY_VERSION" | grep -q "^v"; then
+        V2RAY_VERSION="v${V2RAY_VERSION}"
     fi
     
     # 验证端口范围
@@ -138,6 +164,7 @@ get_parameters() {
     echo "  端口: $PORT"
     echo "  用户: $USER"
     echo "  密码: $PASS"
+    echo "  版本: $V2RAY_VERSION"
 }
 
 # 获取本机 IP
@@ -213,19 +240,20 @@ setup_alpine() {
 
 # 安装 V2Ray - Alpine 方式
 install_v2ray_alpine() {
-    print_info "在 Alpine 上安装 V2Ray v5.41.0..."
+    print_info "在 Alpine 上安装 V2Ray $V2RAY_VERSION..."
     
     # 尝试从仓库安装
     if apk search v2ray | grep -q "^v2ray-"; then
         print_info "从 Alpine 仓库安装 V2Ray..."
         apk add --no-cache v2ray v2ray-openrc
         mkdir -p /usr/local/etc/v2ray /var/log/v2ray
+        print_warning "注意: Alpine 仓库版本可能与指定版本 $V2RAY_VERSION 不同"
     else
         # 使用 alpinelinux-install-v2ray 脚本
-        print_info "从 GitHub 安装 V2Ray v5.41.0..."
+        print_info "从 GitHub 安装 V2Ray $V2RAY_VERSION..."
         TEMP_SCRIPT=$(mktemp)
         wget -O "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/alpinelinux-install-v2ray/master/install-release.sh
-        sh "$TEMP_SCRIPT" --version v5.41.0
+        sh "$TEMP_SCRIPT" --version "$V2RAY_VERSION"
         rm -f "$TEMP_SCRIPT"
     fi
     
@@ -234,16 +262,16 @@ install_v2ray_alpine() {
 
 # 安装 V2Ray - Systemd 系统方式
 install_v2ray_systemd() {
-    print_info "在 $OS_TYPE 上安装 V2Ray v5.41.0..."
+    print_info "在 $OS_TYPE 上安装 V2Ray $V2RAY_VERSION..."
     
     # 使用 fhs-install-v2ray 脚本
     if command -v bash >/dev/null 2>&1; then
-        bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh) --version v5.41.0
+        bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh) --version "$V2RAY_VERSION"
     else
         # 如果没有 bash，先下载再执行
         TEMP_SCRIPT=$(mktemp)
         curl -L -o "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh
-        sh "$TEMP_SCRIPT" --version v5.41.0
+        sh "$TEMP_SCRIPT" --version "$V2RAY_VERSION"
         rm -f "$TEMP_SCRIPT"
     fi
     
@@ -440,6 +468,7 @@ generate_connection_info() {
     echo "系统信息："
     echo "  操作系统: $OS_TYPE"
     echo "  Init 系统: $INIT_SYSTEM"
+    echo "  V2Ray 版本: $V2RAY_VERSION"
     echo ""
     echo "服务器信息："
     echo "  IP 地址: $HOST"
@@ -477,6 +506,7 @@ V2Ray 连接信息
 安装时间: $(date)
 操作系统: $OS_TYPE
 Init 系统: $INIT_SYSTEM
+V2Ray 版本: $V2RAY_VERSION
 
 服务器信息：
   IP 地址: $HOST
