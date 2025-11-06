@@ -2,8 +2,8 @@
 
 # V2Ray 一键安装配置脚本 - 通用版本
 # 支持系统: Alpine Linux, Debian, Ubuntu, CentOS, Fedora
-# 使用方法: sh install_v2ray.sh [PORT] [USER] [PASS] [VERSION]
-# 或者设置环境变量: PORT=61031 USER=user01 PASS=pass01 VER=v5.41.0 sh install_v2ray.sh
+# 使用方法: sh install.sh [PORT] [USER] [PASS] [VERSION]
+# 或者设置环境变量: PORT=61031 USER=user01 PASS=pass01 VER=v5.41.0 sh install.sh
 
 set -e
 
@@ -102,6 +102,49 @@ detect_os() {
     fi
 }
 
+# 检查端口是否可用
+check_port_available() {
+    PORT_TO_CHECK=$1
+    print_info "检查端口 $PORT_TO_CHECK 可用性..."
+    
+    # 方法1: 使用 netstat (优先)
+    if command -v netstat >/dev/null 2>&1; then
+        if netstat -tuln 2>/dev/null | grep -q ":${PORT_TO_CHECK} "; then
+            print_error "端口 $PORT_TO_CHECK 已被占用"
+            print_info "查看占用进程: netstat -tulnp | grep :$PORT_TO_CHECK"
+            return 1
+        fi
+    # 方法2: 使用 ss
+    elif command -v ss >/dev/null 2>&1; then
+        if ss -tuln 2>/dev/null | grep -q ":${PORT_TO_CHECK} "; then
+            print_error "端口 $PORT_TO_CHECK 已被占用"
+            print_info "查看占用进程: ss -tulnp | grep :$PORT_TO_CHECK"
+            return 1
+        fi
+    # 方法3: 使用 lsof
+    elif command -v lsof >/dev/null 2>&1; then
+        if lsof -i ":${PORT_TO_CHECK}" >/dev/null 2>&1; then
+            print_error "端口 $PORT_TO_CHECK 已被占用"
+            print_info "查看占用进程: lsof -i :$PORT_TO_CHECK"
+            return 1
+        fi
+    # 方法4: 尝试绑定端口 (兼容性最好但需要 nc)
+    elif command -v nc >/dev/null 2>&1; then
+        # 尝试使用 nc 测试端口
+        if nc -z 127.0.0.1 "$PORT_TO_CHECK" 2>/dev/null; then
+            print_error "端口 $PORT_TO_CHECK 已被占用"
+            return 1
+        fi
+    else
+        print_warning "无法检测端口占用情况 (缺少 netstat/ss/lsof/nc 工具)"
+        print_warning "将继续安装，但端口可能已被占用"
+        return 0
+    fi
+    
+    print_info "端口 $PORT_TO_CHECK 可用"
+    return 0
+}
+
 # 获取参数
 get_parameters() {
     # 如果通过命令行参数传入
@@ -131,40 +174,52 @@ get_parameters() {
         print_info "请输入配置参数（按回车使用默认值）"
         
         printf "端口 [默认: 61031]: "
-        read PORT
+        read -r PORT
         PORT=${PORT:-61031}
         
         printf "用户名 [默认: user01]: "
-        read USER
+        read -r USER
         USER=${USER:-user01}
         
         printf "密码 [默认: pass01]: "
-        read PASS
+        read -r PASS
         PASS=${PASS:-pass01}
         
         printf "V2Ray 版本 [默认: v5.41.0]: "
-        read V2RAY_VERSION
+        read -r V2RAY_VERSION
     fi
     
     # 设置默认版本
     V2RAY_VERSION=${V2RAY_VERSION:-v5.41.0}
     
     # 确保版本号以 v 开头
-    if ! echo "$V2RAY_VERSION" | grep -q "^v"; then
-        V2RAY_VERSION="v${V2RAY_VERSION}"
-    fi
+    case "$V2RAY_VERSION" in
+        v*) ;;
+        *) V2RAY_VERSION="v${V2RAY_VERSION}" ;;
+    esac
     
     # 验证端口范围
-    if ! echo "$PORT" | grep -qE '^[0-9]+$' || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
-        print_error "端口必须在 1-65535 之间"
-        exit 1
-    fi
+    case "$PORT" in
+        ''|*[!0-9]*)
+            print_error "端口必须是数字"
+            exit 1
+            ;;
+        *)
+            if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+                print_error "端口必须在 1-65535 之间"
+                exit 1
+            fi
+            ;;
+    esac
     
     print_info "配置参数："
     echo "  端口: $PORT"
     echo "  用户: $USER"
     echo "  密码: $PASS"
     echo "  版本: $V2RAY_VERSION"
+    
+    # 检查端口可用性
+    check_port_available "$PORT" || exit 1
 }
 
 # 获取本机 IP
