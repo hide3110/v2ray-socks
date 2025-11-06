@@ -541,7 +541,9 @@ main() {
     
     check_root
     detect_os
-    confirm_uninstall
+    # confirm_uninstall
+
+    print_info "开始自动卸载..."
     
     # 停止服务
     stop_service
