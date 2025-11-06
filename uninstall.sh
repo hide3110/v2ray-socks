@@ -2,7 +2,7 @@
 
 # V2Ray 卸载脚本 - 通用版本
 # 支持系统: Alpine Linux, Debian, Ubuntu, CentOS, Fedora
-# 使用方法: sh uninstall_v2ray.sh
+# 使用方法: sh uninstall.sh
 
 set -e
 
@@ -129,15 +129,18 @@ confirm_uninstall() {
     echo ""
     
     printf "确定要继续卸载吗? (yes/no): "
-    read CONFIRM
+    read -r CONFIRM
     
-    if [ "$CONFIRM" != "yes" ] && [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "YES" ] && [ "$CONFIRM" != "Y" ]; then
-        print_info "取消卸载操作"
-        exit 0
-    fi
-    
-    echo ""
-    print_info "开始卸载..."
+    case "$CONFIRM" in
+        yes|y|YES|Y)
+            echo ""
+            print_info "开始卸载..."
+            ;;
+        *)
+            print_info "取消卸载操作"
+            exit 0
+            ;;
+    esac
 }
 
 # 停止服务 - OpenRC
@@ -165,7 +168,7 @@ stop_service_openrc() {
 
 # 停止服务 - Systemd
 stop_service_systemd() {
-    if systemctl list-unit-files | grep -q v2ray; then
+    if systemctl list-unit-files 2>/dev/null | grep -q v2ray; then
         print_step "停止 V2Ray 服务 (Systemd)..."
         
         # 检查服务是否在运行
@@ -213,13 +216,13 @@ uninstall_v2ray_systemd_official() {
     # 下载卸载脚本
     print_info "正在下载官方卸载脚本..."
     if command -v curl >/dev/null 2>&1; then
-        if ! curl -L -o "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh; then
+        if ! curl -L -o "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh 2>/dev/null; then
             print_warning "下载官方卸载脚本失败，将使用手动卸载方法"
             rm -f "$TEMP_SCRIPT"
             return 1
         fi
     elif command -v wget >/dev/null 2>&1; then
-        if ! wget -O "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh; then
+        if ! wget -O "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh 2>/dev/null; then
             print_warning "下载官方卸载脚本失败，将使用手动卸载方法"
             rm -f "$TEMP_SCRIPT"
             return 1
@@ -233,7 +236,7 @@ uninstall_v2ray_systemd_official() {
     # 执行卸载脚本
     print_info "正在执行官方卸载脚本..."
     if command -v bash >/dev/null 2>&1; then
-        if bash "$TEMP_SCRIPT" --remove; then
+        if bash "$TEMP_SCRIPT" --remove 2>/dev/null; then
             rm -f "$TEMP_SCRIPT"
             print_info "官方脚本卸载成功"
             return 0
@@ -243,7 +246,7 @@ uninstall_v2ray_systemd_official() {
             return 1
         fi
     else
-        if sh "$TEMP_SCRIPT" --remove; then
+        if sh "$TEMP_SCRIPT" --remove 2>/dev/null; then
             rm -f "$TEMP_SCRIPT"
             print_info "官方脚本卸载成功"
             return 0
