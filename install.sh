@@ -171,20 +171,37 @@ get_parameters() {
 get_host_ip() {
     print_info "获取本机 IP 地址..."
     
-    # 尝试多种方式获取公网 IP
+    HOST=""
+    
+    # 尝试使用 curl 获取公网 IP
     if command -v curl >/dev/null 2>&1; then
-        HOST=$(curl -s -4 https://api.ipify.org 2>/dev/null || \
-               curl -s -4 https://ifconfig.me 2>/dev/null || \
-               curl -s -4 https://icanhazip.com 2>/dev/null)
-    elif command -v wget >/dev/null 2>&1; then
-        HOST=$(wget -qO- https://api.ipify.org 2>/dev/null || \
-               wget -qO- https://ifconfig.me 2>/dev/null || \
-               wget -qO- https://icanhazip.com 2>/dev/null)
+        HOST=$(curl -s -4 --connect-timeout 5 https://api.ipify.org 2>/dev/null)
+        if [ -z "$HOST" ]; then
+            HOST=$(curl -s -4 --connect-timeout 5 https://ifconfig.me 2>/dev/null)
+        fi
+        if [ -z "$HOST" ]; then
+            HOST=$(curl -s -4 --connect-timeout 5 https://icanhazip.com 2>/dev/null)
+        fi
+    fi
+    
+    # 尝试使用 wget 获取公网 IP
+    if [ -z "$HOST" ] && command -v wget >/dev/null 2>&1; then
+        HOST=$(wget -qO- --timeout=5 https://api.ipify.org 2>/dev/null)
+        if [ -z "$HOST" ]; then
+            HOST=$(wget -qO- --timeout=5 https://ifconfig.me 2>/dev/null)
+        fi
+        if [ -z "$HOST" ]; then
+            HOST=$(wget -qO- --timeout=5 https://icanhazip.com 2>/dev/null)
+        fi
     fi
     
     # 如果无法获取公网IP，使用本地IP
     if [ -z "$HOST" ]; then
-        HOST=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127.0.0.1' | head -n 1)
+        if command -v ip >/dev/null 2>&1; then
+            HOST=$(ip -4 addr show | grep inet | grep -v '127.0.0.1' | awk '{print $2}' | cut -d'/' -f1 | head -n 1)
+        elif command -v ifconfig >/dev/null 2>&1; then
+            HOST=$(ifconfig | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | head -n 1)
+        fi
     fi
     
     if [ -z "$HOST" ]; then
@@ -264,17 +281,25 @@ install_v2ray_alpine() {
 install_v2ray_systemd() {
     print_info "在 $OS_TYPE 上安装 V2Ray $V2RAY_VERSION..."
     
-    # 使用 fhs-install-v2ray 脚本
-    if command -v bash >/dev/null 2>&1; then
-        bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh) --version "$V2RAY_VERSION"
-    else
-        # 如果没有 bash，先下载再执行
-        TEMP_SCRIPT=$(mktemp)
+    # 使用临时文件而非进程替换
+    TEMP_SCRIPT=$(mktemp)
+    
+    if command -v curl >/dev/null 2>&1; then
         curl -L -o "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh
-        sh "$TEMP_SCRIPT" --version "$V2RAY_VERSION"
-        rm -f "$TEMP_SCRIPT"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -O "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh
+    else
+        print_error "需要 curl 或 wget 来下载安装脚本"
+        exit 1
     fi
     
+    if command -v bash >/dev/null 2>&1; then
+        bash "$TEMP_SCRIPT" --version "$V2RAY_VERSION"
+    else
+        sh "$TEMP_SCRIPT" --version "$V2RAY_VERSION"
+    fi
+    
+    rm -f "$TEMP_SCRIPT"
     print_info "V2Ray 安装成功"
 }
 
