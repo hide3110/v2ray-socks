@@ -5,16 +5,16 @@
 ### 一键脚本自定义
 自定义端口参数如：PORT=61031 USER=yyds01 PASS=b346e6ff-cad9-4cdd-b621-8b3bc51a0ca7 (此为reality协议证书地址)，使用时请自行定义此参数！
 ```bash
-PORT=61031 USER=yyds01 PASS=b346e6ff-cad9-4cdd-b621-8b3bc51a0ca7 bash <(curl -fsSL https://raw.githubusercontent.com/hide3110/v2ray-socks/main/install.sh)
+PORT=61031 USER=yyds01 PASS=b346e6ff-cad9-4cdd-b621-8b3bc51a0ca7 sh <(curl -fsSL https://raw.githubusercontent.com/hide3110/v2ray-socks/main/install.sh)
 ```
 ### 指定版本号
 可以脚本前添加v2ray版本号变量，如VER=v5.38.0
 ```
-VER=v5.38.0 PORT=61031 USER=yyds01 PASS=b346e6ff-cad9-4cdd-b621-8b3bc51a0ca7 bash <(curl -fsSL https://raw.githubusercontent.com/hide3110/v2ray-socks/main/install.sh)
+VER=v5.38.0 PORT=61031 USER=yyds01 PASS=b346e6ff-cad9-4cdd-b621-8b3bc51a0ca7 sh <(curl -fsSL https://raw.githubusercontent.com/hide3110/v2ray-socks/main/install.sh)
 ```
 ### 缷载
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/hide3110/v2ray-socks/main/uninstall.sh)
+sh <(curl -fsSL https://raw.githubusercontent.com/hide3110/v2ray-socks/main/uninstall.sh)
 ```
 
 ## 详细说明
