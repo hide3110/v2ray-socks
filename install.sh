@@ -376,8 +376,7 @@ EOF
     
     # 确保日志目录存在
     mkdir -p /var/log/v2ray
-    touch /var/log/v2ray/access.log 2>/dev/null || true
-    touch /var/log/v2ray/error.log 2>/dev/null || true
+    touch /var/log/v2ray.log 2>/dev/null || true
     
     print_info "配置文件已生成: $CONFIG_PATH/config.json"
 }
@@ -386,31 +385,51 @@ EOF
 configure_openrc_service() {
     print_info "配置 V2Ray OpenRC 服务..."
     
-    if [ ! -f /etc/init.d/v2ray ]; then
-        cat > /etc/init.d/v2ray <<'EOF'
+    # 如果服务正在运行，先停止
+    if rc-service v2ray status >/dev/null 2>&1; then
+        print_info "停止现有 V2Ray 服务..."
+        rc-service v2ray stop || true
+    fi
+    
+    # 无论文件是否存在，都覆盖写入新内容
+    cat > /etc/init.d/v2ray <<'EOF'
 #!/sbin/openrc-run
 
-name="v2ray"
-description="V2Ray Service"
-command="/usr/local/bin/v2ray"
-command_args="run -config /usr/local/etc/v2ray/config.json"
-command_background="yes"
-pidfile="/run/${RC_SVCNAME}.pid"
-output_log="/var/log/v2ray/access.log"
-error_log="/var/log/v2ray/error.log"
+V2_CONFIG="/usr/local/etc/v2ray/config.json"
+V2_PIDFILE="/run/v2ray.pid"
+V2_LOG="/var/log/v2ray.log"
 
 depend() {
-    need net
-    after net
+	need net
 }
 
-start_pre() {
-    checkpath -d -m 0755 -o root:root /var/log/v2ray
+checkconfig() {
+	if [ ! -f ${V2_CONFIG} ]; then
+		ewarn "${V2_CONFIG} does not exist."
+	fi
+}
+
+start() {
+	checkconfig || return 1
+
+	ebegin "Starting V2ray"
+	ebegin "Log File : ${V2_LOG}"
+	start-stop-daemon --start	\
+	-b -1 ${V2_LOG} -2 ${V2_LOG}	\
+	-m -p ${V2_PIDFILE}		\
+	--exec /usr/bin/v2ray -- run -config ${V2_CONFIG}
+	eend $?
+}
+
+stop() {
+	ebegin "Stopping V2ray"
+	start-stop-daemon --stop -p ${V2_PIDFILE}
+	eend $?
 }
 EOF
-        chmod +x /etc/init.d/v2ray
-        print_info "OpenRC 服务文件已创建"
-    fi
+    
+    chmod +x /etc/init.d/v2ray
+    print_info "OpenRC 服务文件已配置"
 }
 
 # 启动服务 - OpenRC
@@ -426,7 +445,7 @@ start_service_openrc() {
         print_info "V2Ray 服务启动成功"
     else
         print_error "V2Ray 服务启动失败"
-        print_info "查看日志: tail -f /var/log/v2ray/error.log"
+        print_info "查看日志: tail -f /var/log/v2ray.log"
         exit 1
     fi
 }
@@ -473,7 +492,7 @@ generate_connection_info() {
         CMD_STATUS="rc-service v2ray status"
         CMD_ENABLE="rc-update add v2ray default"
         CMD_DISABLE="rc-update del v2ray default"
-        CMD_LOG="tail -f /var/log/v2ray/error.log"
+        CMD_LOG="tail -f /var/log/v2ray.log"
     else
         CMD_START="systemctl start v2ray"
         CMD_STOP="systemctl stop v2ray"
