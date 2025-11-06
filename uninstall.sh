@@ -202,30 +202,56 @@ uninstall_v2ray_systemd_official() {
     print_step "使用官方脚本卸载 V2Ray (Systemd 系统)..."
     
     # 检查是否能访问 GitHub
-    if curl -s --connect-timeout 5 https://raw.githubusercontent.com >/dev/null 2>&1; then
-        if command -v bash >/dev/null 2>&1; then
-            bash <(curl -L https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh) --remove || {
-                print_warning "官方卸载脚本执行失败，将使用手动卸载方法"
-                return 1
-            }
-            print_info "官方脚本卸载成功"
-            return 0
-        else
-            # 如果没有 bash，下载后用 sh 执行
-            TEMP_SCRIPT=$(mktemp)
-            curl -L -o "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh
-            sh "$TEMP_SCRIPT" --remove || {
-                print_warning "官方卸载脚本执行失败，将使用手动卸载方法"
-                rm -f "$TEMP_SCRIPT"
-                return 1
-            }
+    if ! curl -s --connect-timeout 5 https://raw.githubusercontent.com >/dev/null 2>&1; then
+        print_warning "无法访问 GitHub，将使用手动卸载方法"
+        return 1
+    fi
+    
+    # 创建临时文件
+    TEMP_SCRIPT=$(mktemp)
+    
+    # 下载卸载脚本
+    print_info "正在下载官方卸载脚本..."
+    if command -v curl >/dev/null 2>&1; then
+        if ! curl -L -o "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh; then
+            print_warning "下载官方卸载脚本失败，将使用手动卸载方法"
+            rm -f "$TEMP_SCRIPT"
+            return 1
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if ! wget -O "$TEMP_SCRIPT" https://raw.githubusercontent.com/v2fly/fhs-install-v2ray/master/install-release.sh; then
+            print_warning "下载官方卸载脚本失败，将使用手动卸载方法"
+            rm -f "$TEMP_SCRIPT"
+            return 1
+        fi
+    else
+        print_warning "需要 curl 或 wget 来下载卸载脚本"
+        rm -f "$TEMP_SCRIPT"
+        return 1
+    fi
+    
+    # 执行卸载脚本
+    print_info "正在执行官方卸载脚本..."
+    if command -v bash >/dev/null 2>&1; then
+        if bash "$TEMP_SCRIPT" --remove; then
             rm -f "$TEMP_SCRIPT"
             print_info "官方脚本卸载成功"
             return 0
+        else
+            print_warning "官方卸载脚本执行失败，将使用手动卸载方法"
+            rm -f "$TEMP_SCRIPT"
+            return 1
         fi
     else
-        print_warning "无法访问 GitHub，将使用手动卸载方法"
-        return 1
+        if sh "$TEMP_SCRIPT" --remove; then
+            rm -f "$TEMP_SCRIPT"
+            print_info "官方脚本卸载成功"
+            return 0
+        else
+            print_warning "官方卸载脚本执行失败，将使用手动卸载方法"
+            rm -f "$TEMP_SCRIPT"
+            return 1
+        fi
     fi
 }
 
