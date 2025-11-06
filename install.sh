@@ -376,7 +376,7 @@ EOF
     
     # 确保日志目录存在
     mkdir -p /var/log/v2ray
-    touch /var/log/v2ray.log 2>/dev/null || true
+    touch /var/log/v2ray/v2ray.log 2>/dev/null || true
     
     print_info "配置文件已生成: $CONFIG_PATH/config.json"
 }
@@ -397,34 +397,34 @@ configure_openrc_service() {
 
 V2_CONFIG="/usr/local/etc/v2ray/config.json"
 V2_PIDFILE="/run/v2ray.pid"
-V2_LOG="/var/log/v2ray.log"
+V2_LOG="/var/log/v2ray/v2ray.log"
 
 depend() {
-	need net
+  need net
 }
 
 checkconfig() {
-	if [ ! -f ${V2_CONFIG} ]; then
-		ewarn "${V2_CONFIG} does not exist."
-	fi
+  if [ ! -f ${V2_CONFIG} ]; then
+    ewarn "${V2_CONFIG} does not exist."
+  fi
 }
 
 start() {
-	checkconfig || return 1
+  checkconfig || return 1
 
-	ebegin "Starting V2ray"
-	ebegin "Log File : ${V2_LOG}"
-	start-stop-daemon --start	\
-	-b -1 ${V2_LOG} -2 ${V2_LOG}	\
-	-m -p ${V2_PIDFILE}		\
-	--exec /usr/bin/v2ray -- run -config ${V2_CONFIG}
-	eend $?
+  ebegin "Starting V2ray"
+  ebegin "Log File : ${V2_LOG}"
+  start-stop-daemon --start \
+  -b -1 ${V2_LOG} -2 ${V2_LOG}  \
+  -m -p ${V2_PIDFILE}   \
+  --exec /usr/bin/v2ray -- run -config ${V2_CONFIG}
+  eend $?
 }
 
 stop() {
-	ebegin "Stopping V2ray"
-	start-stop-daemon --stop -p ${V2_PIDFILE}
-	eend $?
+  ebegin "Stopping V2ray"
+  start-stop-daemon --stop -p ${V2_PIDFILE}
+  eend $?
 }
 EOF
     
@@ -445,7 +445,7 @@ start_service_openrc() {
         print_info "V2Ray 服务启动成功"
     else
         print_error "V2Ray 服务启动失败"
-        print_info "查看日志: tail -f /var/log/v2ray.log"
+        print_info "查看日志: tail -f /var/log/v2ray/v2ray.log"
         exit 1
     fi
 }
@@ -492,7 +492,7 @@ generate_connection_info() {
         CMD_STATUS="rc-service v2ray status"
         CMD_ENABLE="rc-update add v2ray default"
         CMD_DISABLE="rc-update del v2ray default"
-        CMD_LOG="tail -f /var/log/v2ray.log"
+        CMD_LOG="tail -f /var/log/v2ray/v2ray.log"
     else
         CMD_START="systemctl start v2ray"
         CMD_STOP="systemctl stop v2ray"
