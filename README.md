@@ -3,7 +3,7 @@
 这个 Bash 脚本可以帮助你快速部署 v2ray socks5 代理服务器。
 
 ### 一键脚本自定义
-自定义端口参数如：PORT=61031 USER=yyds01 PASS=b346e6ff-cad9-4cdd-b621-8b3bc51a0ca7 (此为reality协议证书地址)，使用时请自行定义此参数！
+自定义端口参数如：PORT=61031 USER=yyds01 PASS=b346e6ff-cad9-4cdd-b621-8b3bc51a0ca7，使用时请自行定义此参数！
 ```bash
 PORT=61031 USER=yyds01 PASS=b346e6ff-cad9-4cdd-b621-8b3bc51a0ca7 sh <(curl -fsSL https://raw.githubusercontent.com/hide3110/v2ray-socks/main/install.sh)
 ```
